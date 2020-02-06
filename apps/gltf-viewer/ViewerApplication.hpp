@@ -5,6 +5,7 @@
 #include "utils/filesystem.hpp"
 #include "utils/shaders.hpp"
 #include <tiny_gltf.h>
+#include "utils/gltf.hpp"
 class ViewerApplication
 {
 public:
