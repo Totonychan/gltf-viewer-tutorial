@@ -60,7 +60,7 @@ private:
  std::vector<GLuint> createBufferObjects(const tinygltf::Model &model);
 
  std::vector<GLuint> createVertexArrayObjects(const tinygltf::Model &model,
- const std::vector<GLuint> &bufferObjects,
- std::vector<VaoRange> &meshToVertexArrays);
+     const std::vector<GLuint> &bufferObjects,
+     std::vector<VaoRange> &meshToVertexArrays);
 
 };

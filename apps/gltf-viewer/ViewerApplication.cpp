@@ -88,6 +88,11 @@ int ViewerApplication::run()
     // Draw the scene referenced by gltf file
     if (model.defaultScene >= 0) {
       // TODO Draw all nodes
+      auto listNode = model.scenes[model.defaultScene].nodes;
+      //MAt3
+      for (auto nodeIdx : listNode){
+        drawNode(nodeIdx, glm::mat4(1));
+      }
     }
   };
 
@@ -308,8 +313,6 @@ std::vector<GLuint> ViewerApplication::createVertexArrayObjects(
 
   return vertexArrayObjects;
 }
-
-
 
 ViewerApplication::ViewerApplication(const fs::path &appPath, uint32_t width,
     uint32_t height, const fs::path &gltfFile,
