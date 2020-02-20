@@ -37,7 +37,7 @@ int ViewerApplication::run()
   const auto normalMatrixLocation =
       glGetUniformLocation(glslProgram.glId(), "uNormalMatrix");
 
-  const auto uLightDirection =
+  const auto uLightDirectionLocation =
       glGetUniformLocation(glslProgram.glId(), "uLightDirection");
   const auto uLightIntensity =
       glGetUniformLocation(glslProgram.glId(), "uLightIntensity");
@@ -69,34 +69,34 @@ int ViewerApplication::run()
     cameraController->setCamera(Camera{eye, center, up});
   }
 
-
+  // Init light parameters
   glm::vec3 lightDirection(1, 1, 1);
   glm::vec3 lightIntensity(1, 1, 1);
-
-  // TODO Creation of Buffer Objects
+  bool lightFromCamera= false;
   const auto bufferObjects = createBufferObjects(model);
 
-   // TODO Creation of Vertex Array Objects
-   std::vector<VaoRange> meshToVertexArrays;
-   const auto vertexArrayObjects =
-       createVertexArrayObjects(model, bufferObjects, meshToVertexArrays);
+  std::vector<VaoRange> meshToVertexArrays;
+  const auto vertexArrayObjects =
+      createVertexArrayObjects(model, bufferObjects, meshToVertexArrays);
 
   // Setup OpenGL state for rendering
   glEnable(GL_DEPTH_TEST);
   glslProgram.use();
 
   // Lambda function to draw the scene
-
   const auto drawScene = [&](const Camera &camera) {
     glViewport(0, 0, m_nWindowWidth, m_nWindowHeight);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     const auto viewMatrix = camera.getViewMatrix();
 
-    if (uLightDirection >= 0) {
+    if (lightFromCamera){
+      glUniform3f(uLightDirectionLocation, 0, 0, 1);
+    }
+    else if (uLightDirectionLocation >= 0) {
       const auto lightDirectionInViewSpace =
           glm::normalize(glm::vec3(viewMatrix * glm::vec4(lightDirection, 0.)));
-      glUniform3f(uLightDirection, lightDirectionInViewSpace[0],
+      glUniform3f(uLightDirectionLocation, lightDirectionInViewSpace[0],
           lightDirectionInViewSpace[1], lightDirectionInViewSpace[2]);
     }
 
@@ -104,56 +104,92 @@ int ViewerApplication::run()
       glUniform3f(uLightIntensity, lightIntensity[0], lightIntensity[1],
           lightIntensity[2]);
     }
+
     // The recursive function that should draw a node
     // We use a std::function because a simple lambda cannot be recursive
     const std::function<void(int, const glm::mat4 &)> drawNode =
         [&](int nodeIdx, const glm::mat4 &parentMatrix) {
-          // TODO The drawNode function
           const auto &node = model.nodes[nodeIdx];
-          glm::mat4 modelMatrix = getLocalToWorldMatrix(node, parentMatrix);
-          if (node.mesh >= 0){
-            const auto mvMatrix = viewMatrix * modelMatrix; // Also called localToCamera matrix
-              const auto mvpMatrix = projMatrix * mvMatrix;
-              const auto normalMatrix = glm::transpose(glm::inverse(mvMatrix));
+          const glm::mat4 modelMatrix =
+              getLocalToWorldMatrix(node, parentMatrix);
 
-              glUniformMatrix4fv(modelViewProjMatrixLocation, 1, GL_FALSE,
-                  glm::value_ptr(mvpMatrix));
-              glUniformMatrix4fv(
-                  modelViewMatrixLocation, 1, GL_FALSE, glm::value_ptr(mvMatrix));
+          // If the node references a mesh (a node can also reference a
+          // camera, or a light)
+          if (node.mesh >= 0) {
+            const auto mvMatrix =
+                viewMatrix * modelMatrix; // Also called localToCamera matrix
+            const auto mvpMatrix =
+                projMatrix * mvMatrix; // Also called localToScreen matrix
+            // Normal matrix is necessary to maintain normal vectors
+            // orthogonal to tangent vectors
+            // https://www.lighthouse3d.com/tutorials/glsl-12-tutorial/the-normal-matrix/
+            const auto normalMatrix = glm::transpose(glm::inverse(mvMatrix));
+
+            glUniformMatrix4fv(modelViewProjMatrixLocation, 1, GL_FALSE,
+                glm::value_ptr(mvpMatrix));
+            glUniformMatrix4fv(
+                modelViewMatrixLocation, 1, GL_FALSE, glm::value_ptr(mvMatrix));
+            glUniformMatrix4fv(normalMatrixLocation, 1, GL_FALSE,
+                glm::value_ptr(normalMatrix));
+
+            const auto &mesh = model.meshes[node.mesh];
+            const auto &vaoRange = meshToVertexArrays[node.mesh];
+            for (size_t pIdx = 0; pIdx < mesh.primitives.size(); ++pIdx) {
+              const auto vao = vertexArrayObjects[vaoRange.begin + pIdx];
+              const auto &primitive = mesh.primitives[pIdx];
+              glBindVertexArray(vao);
+              if (primitive.indices >= 0) {
+                const auto &accessor = model.accessors[primitive.indices];
+                const auto &bufferView = model.bufferViews[accessor.bufferView];
+                const auto byteOffset =
+                    accessor.byteOffset + bufferView.byteOffset;
+                glDrawElements(primitive.mode, GLsizei(accessor.count),
+                    accessor.componentType, (const GLvoid *)byteOffset);
+              } else {
+                // Take first accessor to get the count
+                const auto accessorIdx = (*begin(primitive.attributes)).second;
+                const auto &accessor = model.accessors[accessorIdx];
+                glDrawArrays(primitive.mode, 0, GLsizei(accessor.count));
+              }
+            }
           }
 
-          const auto &mesh = model.meshes[node.mesh];
-          const auto &vaoRange = meshToVertexArrays[node.mesh];
-          for (size_t pIdx = 0; pIdx < mesh.primitives.size(); ++pIdx) {
-            const auto vao = vertexArrayObjects[vaoRange.begin + pIdx];
-            const auto &primitive = mesh.primitives[pIdx];
-            glBindVertexArray(vao);
-            if (primitive.indices >= 0) {
-              const auto &accessor = model.accessors[primitive.indices];
-              const auto &bufferView = model.bufferViews[accessor.bufferView];
-              const auto byteOffset =
-                  accessor.byteOffset + bufferView.byteOffset;
-              glDrawElements(primitive.mode, GLsizei(accessor.count),
-                  accessor.componentType, (const GLvoid *)byteOffset);
-            } else {
-              // Take first accessor to get the count
-              const auto accessorIdx = (*begin(primitive.attributes)).second;
-              const auto &accessor = model.accessors[accessorIdx];
-              glDrawArrays(primitive.mode, 0, GLsizei(accessor.count));
-            }
+          // Draw children
+          for (const auto childNodeIdx : node.children) {
+            drawNode(childNodeIdx, modelMatrix);
           }
         };
 
     // Draw the scene referenced by gltf file
     if (model.defaultScene >= 0) {
-      // TODO Draw all nodes
-      auto listNode = model.scenes[model.defaultScene].nodes;
-      //MAt3
-      for (auto nodeIdx : listNode){
+      for (const auto nodeIdx : model.scenes[model.defaultScene].nodes) {
         drawNode(nodeIdx, glm::mat4(1));
       }
     }
   };
+
+  // If we want to render in an image
+  if (!m_OutputPath.empty()) {
+    const auto numComponents = 3;
+    std::vector<unsigned char> pixels(
+        m_nWindowWidth * m_nWindowHeight * numComponents);
+    renderToImage(
+        m_nWindowWidth, m_nWindowHeight, numComponents, pixels.data(), [&]() {
+          const auto camera = cameraController->getCamera();
+          drawScene(camera);
+        });
+    // OpenGL has not the same convention for image axis than most image
+    // formats, so we flip on the Y axis
+    flipImageYAxis(
+        m_nWindowWidth, m_nWindowHeight, numComponents, pixels.data());
+
+    // Write png on disk
+    const auto strPath = m_OutputPath.string();
+    stbi_write_png(
+        strPath.c_str(), m_nWindowWidth, m_nWindowHeight, 3, pixels.data(), 0);
+
+    return 0; // Exit, in that mode we don't want to run interactive viewer
+  }
 
   // Loop until the user closes the window
   for (auto iterationCount = 0u; !m_GLFWHandle.shouldClose();
@@ -192,6 +228,7 @@ int ViewerApplication::run()
           const auto str = ss.str();
           glfwSetClipboardString(m_GLFWHandle.window(), str.c_str());
         }
+
         static int cameraControllerType = 0;
         const auto cameraControllerTypeChanged =
             ImGui::RadioButton("Trackball", &cameraControllerType, 0) ||
@@ -207,6 +244,30 @@ int ViewerApplication::run()
           }
           cameraController->setCamera(currentCamera);
         }
+      }
+      if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen)) {
+        static float lightTheta = 0.f;
+        static float lightPhi = 0.f;
+
+        if (ImGui::SliderFloat("theta", &lightTheta, 0, glm::pi<float>()) ||
+            ImGui::SliderFloat("phi", &lightPhi, 0, 2.f * glm::pi<float>())) {
+          const auto sinPhi = glm::sin(lightPhi);
+          const auto cosPhi = glm::cos(lightPhi);
+          const auto sinTheta = glm::sin(lightTheta);
+          const auto cosTheta = glm::cos(lightTheta);
+          lightDirection =
+              glm::vec3(sinTheta * cosPhi, cosTheta, sinTheta * sinPhi);
+        }
+
+        static glm::vec3 lightColor(1.f, 1.f, 1.f);
+        static float lightIntensityFactor = 1.f;
+
+        if (ImGui::ColorEdit3("color", (float *)&lightColor) ||
+            ImGui::InputFloat("intensity", &lightIntensityFactor)) {
+          lightIntensity = lightColor * lightIntensityFactor;
+        }
+
+        ImGui::Checkbox("light from camera", &lightFromCamera);
       }
       ImGui::End();
     }
@@ -230,32 +291,32 @@ int ViewerApplication::run()
   return 0;
 }
 
-bool ViewerApplication::loadGltfFile(tinygltf::Model & model){
-    std::clog << "Loading file " << m_gltfFilePath << std::endl;
+bool ViewerApplication::loadGltfFile(tinygltf::Model &model)
+{
+  std::clog << "Loading file " << m_gltfFilePath << std::endl;
 
-    tinygltf::TinyGLTF loader;
-    std::string err;
-    std::string warn;
+  tinygltf::TinyGLTF loader;
+  std::string err;
+  std::string warn;
 
-    bool ret =
-        loader.LoadASCIIFromFile(&model, &err, &warn, m_gltfFilePath.string());
+  bool ret =
+      loader.LoadASCIIFromFile(&model, &err, &warn, m_gltfFilePath.string());
 
-    if (!warn.empty()) {
-      std::cerr << warn << std::endl;
-    }
+  if (!warn.empty()) {
+    std::cerr << warn << std::endl;
+  }
 
-    if (!err.empty()) {
-      std::cerr << err << std::endl;
-    }
+  if (!err.empty()) {
+    std::cerr << err << std::endl;
+  }
 
-    if (!ret) {
-      std::cerr << "Failed to parse glTF file" << std::endl;
-      return false;
-    }
+  if (!ret) {
+    std::cerr << "Failed to parse glTF file" << std::endl;
+    return false;
+  }
 
-    return true;
+  return true;
 }
-
 
 std::vector<GLuint> ViewerApplication::createBufferObjects(
     const tinygltf::Model &model)
