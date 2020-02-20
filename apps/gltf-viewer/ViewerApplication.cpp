@@ -486,3 +486,26 @@ ViewerApplication::ViewerApplication(const fs::path &appPath, uint32_t width,
 
   printGLVersion();
 }
+
+std::vector<GLuint> ViewerApplication::createTextureObjects(const tinygltf::Model &model) const{
+  // Assume a texture object has been created and bound to GL_TEXTURE_2D
+  for (int i =0; i< model.textures.size();i++){
+    tinygltf::Sampler defaultSampler;
+    defaultSampler.minFilter = GL_LINEAR;
+    defaultSampler.magFilter = GL_LINEAR;
+    defaultSampler.wrapS = GL_REPEAT;
+    defaultSampler.wrapT = GL_REPEAT;
+    defaultSampler.wrapR = GL_REPEAT;
+
+    const auto &texture = model.textures[i]; // get i-th texture
+    const auto &sampler =
+    texture.sampler >= 0 ? model.samplers[texture.sampler] : defaultSampler;
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+       sampler.minFilter != -1 ? sampler.minFilter : GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+       sampler.magFilter != -1 ? sampler.magFilter : GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, sampler.wrapS);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, sampler.wrapT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_R, sampler.wrapR);
+  }
+}
