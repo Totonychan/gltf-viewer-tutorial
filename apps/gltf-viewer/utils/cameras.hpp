@@ -143,7 +143,27 @@ private:
   glm::vec3 m_up;
 };
 
-class FirstPersonCameraController
+
+//Camera defined by an eye position, a center position and an up vector
+class CameraController
+{
+public:
+  // Controller attributes, if put in a GUI, should be adapted
+  virtual void setSpeed(float speed) = 0;
+  virtual float getSpeed() const = 0;
+  virtual void increaseSpeed(float delta) = 0;
+  virtual const glm::vec3 &getWorldUpAxis() const  = 0;
+  virtual void setWorldUpAxis(const glm::vec3 &worldUpAxis) = 0;
+  // Update the view matrix based on input events and elapsed time
+  // Return true if the view matrix has been modified
+  virtual bool update(float elapsedTime) = 0;
+  // Get the view matrix
+  virtual const Camera &getCamera() const  = 0;
+  virtual void setCamera(const Camera &camera)  = 0;
+};
+
+
+class FirstPersonCameraController : public CameraController
 {
 public:
   FirstPersonCameraController(GLFWwindow *window, float speed = 1.f,
@@ -196,7 +216,7 @@ private:
 };
 
 // todo Blender like camera
-class TrackballCameraController
+class TrackballCameraController : public CameraController
 {
 public:
   TrackballCameraController(GLFWwindow *window, float speed = 1.f,
