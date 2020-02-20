@@ -9,6 +9,8 @@
 #include <glm/gtx/io.hpp>
 
 #include "utils/cameras.hpp"
+#include "utils/gltf.hpp"
+#include "utils/images.hpp"
 
 #include <stb_image_write.h>
 #include <tiny_gltf.h>
@@ -35,32 +37,42 @@ int ViewerApplication::run()
   const auto normalMatrixLocation =
       glGetUniformLocation(glslProgram.glId(), "uNormalMatrix");
 
+  const auto uLightDirection =
+      glGetUniformLocation(glslProgram.glId(), "uLightDirection");
+  const auto uLightIntensity =
+      glGetUniformLocation(glslProgram.glId(), "uLightIntensity");
+
+  tinygltf::Model model;
+  if (!loadGltfFile(model)) {
+    return -1;
+  }
+  glm::vec3 bboxMin, bboxMax;
+  computeSceneBounds(model, bboxMin, bboxMax);
+
   // Build projection matrix
-  auto maxDistance = 500.f; // TODO use scene bounds instead to compute this
-  maxDistance = maxDistance > 0.f ? maxDistance : 100.f;
+  const auto diag = bboxMax - bboxMin;
+  auto maxDistance = glm::length(diag);
   const auto projMatrix =
       glm::perspective(70.f, float(m_nWindowWidth) / m_nWindowHeight,
           0.001f * maxDistance, 1.5f * maxDistance);
 
-  // TODO Implement a new CameraController model and use it instead. Propose the
-  // choice from the GUI
   std::unique_ptr<CameraController> cameraController =
-    std::make_unique<TrackballCameraController>(
-        m_GLFWHandle.window(), 0.5f * maxDistance);
-
+      std::make_unique<TrackballCameraController>(
+          m_GLFWHandle.window(), 0.5f * maxDistance);
   if (m_hasUserCamera) {
     cameraController->setCamera(m_userCamera);
   } else {
-    // TODO Use scene bounds to compute a better default camera
-    cameraController->setCamera(
-        Camera{glm::vec3(0, 0, 0), glm::vec3(0, 0, -1), glm::vec3(0, 1, 0)});
+    const auto center = 0.5f * (bboxMax + bboxMin);
+    const auto up = glm::vec3(0, 1, 0);
+    const auto eye =
+        diag.z > 0 ? center + diag : center + 2.f * glm::cross(diag, up);
+    cameraController->setCamera(Camera{eye, center, up});
   }
 
-  tinygltf::Model model;
-  // TODO Loading the glTF file
-  if (!loadGltfFile(model)) {
-    return -1;
-  }
+
+  glm::vec3 lightDirection(1, 1, 1);
+  glm::vec3 lightIntensity(1, 1, 1);
+
   // TODO Creation of Buffer Objects
   const auto bufferObjects = createBufferObjects(model);
 
@@ -74,12 +86,24 @@ int ViewerApplication::run()
   glslProgram.use();
 
   // Lambda function to draw the scene
+
   const auto drawScene = [&](const Camera &camera) {
     glViewport(0, 0, m_nWindowWidth, m_nWindowHeight);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     const auto viewMatrix = camera.getViewMatrix();
 
+    if (uLightDirection >= 0) {
+      const auto lightDirectionInViewSpace =
+          glm::normalize(glm::vec3(viewMatrix * glm::vec4(lightDirection, 0.)));
+      glUniform3f(uLightDirection, lightDirectionInViewSpace[0],
+          lightDirectionInViewSpace[1], lightDirectionInViewSpace[2]);
+    }
+
+    if (uLightIntensity >= 0) {
+      glUniform3f(uLightIntensity, lightIntensity[0], lightIntensity[1],
+          lightIntensity[2]);
+    }
     // The recursive function that should draw a node
     // We use a std::function because a simple lambda cannot be recursive
     const std::function<void(int, const glm::mat4 &)> drawNode =
@@ -88,21 +112,14 @@ int ViewerApplication::run()
           const auto &node = model.nodes[nodeIdx];
           glm::mat4 modelMatrix = getLocalToWorldMatrix(node, parentMatrix);
           if (node.mesh >= 0){
-            const auto mvMatrix =
-                  viewMatrix * modelMatrix; // Also called localToCamera matrix
-              const auto mvpMatrix =
-                  projMatrix * mvMatrix; // Also called localToScreen matrix
-              // Normal matrix is necessary to maintain normal vectors
-              // orthogonal to tangent vectors
-              // https://www.lighthouse3d.com/tutorials/glsl-12-tutorial/the-normal-matrix/
+            const auto mvMatrix = viewMatrix * modelMatrix; // Also called localToCamera matrix
+              const auto mvpMatrix = projMatrix * mvMatrix;
               const auto normalMatrix = glm::transpose(glm::inverse(mvMatrix));
 
               glUniformMatrix4fv(modelViewProjMatrixLocation, 1, GL_FALSE,
                   glm::value_ptr(mvpMatrix));
               glUniformMatrix4fv(
                   modelViewMatrixLocation, 1, GL_FALSE, glm::value_ptr(mvMatrix));
-              glUniformMatrix4fv(normalMatrixLocation, 1, GL_FALSE,
-                  glm::value_ptr(normalMatrix));
           }
 
           const auto &mesh = model.meshes[node.mesh];
