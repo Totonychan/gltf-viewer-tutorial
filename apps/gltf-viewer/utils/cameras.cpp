@@ -107,4 +107,81 @@ bool FirstPersonCameraController::update(float elapsedTime)
   return true;
 }
 
-bool TrackballCameraController::update(float elapsedTime) { return false; }
+bool TrackballCameraController::update(float elapsedTime) {
+
+    if (glfwGetMouseButton(m_pWindow, GLFW_MOUSE_BUTTON_MIDDLE) &&
+        !m_MiddleButtonPressed) {
+      m_MiddleButtonPressed = true;
+      glfwGetCursorPos(
+          m_pWindow, &m_LastCursorPosition.x, &m_LastCursorPosition.y);
+    } else if (!glfwGetMouseButton(m_pWindow, GLFW_MOUSE_BUTTON_MIDDLE) &&
+               m_MiddleButtonPressed) {
+      m_MiddleButtonPressed = false;
+    }
+
+
+      const auto cursorDelta = ([&]() {
+        if (m_MiddleButtonPressed) {
+          dvec2 cursorPosition;
+          glfwGetCursorPos(m_pWindow, &cursorPosition.x, &cursorPosition.y);
+          const auto delta = cursorPosition - m_LastCursorPosition;
+          m_LastCursorPosition = cursorPosition;
+          return delta;
+        }
+        return dvec2(0);
+      })();
+
+    // Deplacement lateral
+    if (glfwGetKey(m_pWindow, GLFW_KEY_LEFT_SHIFT)) {
+        const auto movX = 0.1*cursorDelta.x;
+        const auto movY = 0.1*cursorDelta.y;
+        const auto hasMoved = (movX || movY);
+        if (!hasMoved){
+          return false;
+        }
+        m_camera.moveLocal(movX, movY, 0.f);
+        return true;
+    }
+
+    else if (glfwGetKey(m_pWindow, GLFW_KEY_LEFT_CONTROL)) {
+          const auto movZ = 0.1*cursorDelta.x;
+          if (movZ == 0.0){
+            return false;
+          }
+          const auto viewVector = m_camera.center() - m_camera.eye();
+          m_camera.dollyIn(movZ);
+          return true;
+    }
+    else{
+          const float angX = 0.01f*cursorDelta.y;
+          const float angY = -0.01f*cursorDelta.x;
+          const auto hasMoved = (angX || angY);
+          if (!hasMoved){
+            return false;
+          }
+
+          // We need to rotate eye around center, for that we rotate the vector [center,
+          // eye] (= depthAxis) in order to compute a new eye position
+          const auto depthAxis = m_camera.eye() - m_camera.center();
+
+          // Start with the vertical rotation, which is done around the horizontal axis
+          // of the camera and can be obtained with left()
+          const auto horizontalAxis = m_camera.left();
+          const auto longitudeRotationMatrix =
+              rotate(mat4(1), angX, horizontalAxis);
+          auto rotatedDepthAxis = vec3(longitudeRotationMatrix * vec4(depthAxis, 0));
+
+          // Then the horizontal rotation, which is done around the world up axis.
+          const auto latitudeRotationMatrix =
+              rotate(mat4(1), angY, m_worldUpAxis);
+          const auto finalDepthAxis =
+              vec3(latitudeRotationMatrix * vec4(rotatedDepthAxis, 0));
+
+          // Update camera with new eye position
+          const auto newEye = m_camera.center() + finalDepthAxis;
+          m_camera = Camera(newEye, m_camera.center(), m_worldUpAxis);
+
+          return true;
+    }
+
+}
