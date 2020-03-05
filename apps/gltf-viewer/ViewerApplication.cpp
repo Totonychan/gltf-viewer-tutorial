@@ -45,6 +45,9 @@ int ViewerApplication::run()
   const auto uBaseColorTexture =
       glGetUniformLocation(glslProgram.glId(), "uBaseColorTexture");
 
+  const auto uBaseColorFactor =
+          glGetUniformLocation(glslProgram.glId(), "uBaseColorFactor");
+
 
   tinygltf::Model model;
   if (!loadGltfFile(model)) {
@@ -103,24 +106,37 @@ int ViewerApplication::run()
 
   // Lambda function bind material
   const auto bindMaterial = [&](const auto materialIndex) {
-      if (materialIndex >0){
+      if (materialIndex >=0){
           const auto &material = model.materials[materialIndex];
           const auto &pbrMetallicRoughness = material.pbrMetallicRoughness;
+
+          if (uBaseColorFactor >= 0) {
+            glUniform4f(uBaseColorFactor,
+               (float)pbrMetallicRoughness.baseColorFactor[0],
+               (float)pbrMetallicRoughness.baseColorFactor[1],
+               (float)pbrMetallicRoughness.baseColorFactor[2],
+               (float)pbrMetallicRoughness.baseColorFactor[3]);
+          }
+
           if (uBaseColorTexture >= 0) {
-                 auto textureObject = whiteTexture;
-                 if (pbrMetallicRoughness.baseColorTexture.index >= 0) {
-                   const auto &texture =
-                       model.textures[pbrMetallicRoughness.baseColorTexture.index];
-                   if (texture.source >= 0) {
-                     textureObject = textureObjects[texture.source];
-                   }
-                }
-                glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, textureObject);
-                glUniform1i(uBaseColorTexture, 0);
+            auto textureObject = whiteTexture;
+            if (pbrMetallicRoughness.baseColorTexture.index >= 0) {
+              const auto &texture =
+                  model.textures[pbrMetallicRoughness.baseColorTexture.index];
+              if (texture.source >= 0) {
+                textureObject = textureObjects[texture.source];
+              }
+            }
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, textureObject);
+            glUniform1i(uBaseColorTexture, 0);
+
           }
       }
       else{
+        if (uBaseColorFactor >= 0) {
+          glUniform4f(uBaseColorFactor, 1, 1, 1, 1);
+        }
         if (uBaseColorTexture >= 0) {
           glActiveTexture(GL_TEXTURE0);
           glBindTexture(GL_TEXTURE_2D, whiteTexture);
