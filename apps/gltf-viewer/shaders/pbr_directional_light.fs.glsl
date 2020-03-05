@@ -81,9 +81,7 @@ void main()
     float D = M_1_PI * sqrAlpha / (baseDenomD * baseDenomD);
 
     vec3 f_specular = F * Vis * D;
-
     vec3 diffuse = c_diff * M_1_PI;
-
     vec3 f_diffuse = (1 - F) * diffuse;
     fColor = LINEARtoSRGB((f_diffuse + f_specular) * uLightIntensity * NdotL);
 }
