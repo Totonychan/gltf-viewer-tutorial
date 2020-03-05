@@ -10,8 +10,10 @@ uniform vec3 uLightIntensity;
 uniform vec4 uBaseColorFactor;
 uniform float uMetallicFactor;
 uniform float uRougnessFactor;
+uniform vec3 uEmissiveFactor;
 
 uniform sampler2D uBaseColorTexture;
+uniform sampler2D uEmissiveTexture;
 uniform sampler2D uMetallicRoughnessTexture;
 
 out vec3 fColor;
@@ -47,10 +49,11 @@ void main()
   vec3 V = normalize(-vViewSpacePosition);
   vec3 H = normalize(L + V);
 
+  vec4 emissiveFromTexture = SRGBtoLINEAR(texture(uEmissiveTexture, vTexCoords));
+  vec3 emissive = vec3(uEmissiveFactor * emissiveFromTexture.rgb);
 
     vec4 baseColorFromTexture = SRGBtoLINEAR(texture(uBaseColorTexture, vTexCoords));
     vec4 metallicRougnessFromTexture = texture(uMetallicRoughnessTexture, vTexCoords);
-
     vec4 baseColor = uBaseColorFactor * baseColorFromTexture;
     vec3 metallic = vec3(uMetallicFactor * metallicRougnessFromTexture.b);
     float roughness = uRougnessFactor * metallicRougnessFromTexture.g;
@@ -83,5 +86,8 @@ void main()
     vec3 f_specular = F * Vis * D;
     vec3 diffuse = c_diff * M_1_PI;
     vec3 f_diffuse = (1 - F) * diffuse;
-    fColor = LINEARtoSRGB((f_diffuse + f_specular) * uLightIntensity * NdotL);
+
+
+
+    fColor = LINEARtoSRGB((f_diffuse + f_specular) * uLightIntensity * NdotL + emissive);
 }
