@@ -44,10 +44,15 @@ int ViewerApplication::run()
 
   const auto uBaseColorTexture =
       glGetUniformLocation(glslProgram.glId(), "uBaseColorTexture");
-
   const auto uBaseColorFactor =
           glGetUniformLocation(glslProgram.glId(), "uBaseColorFactor");
 
+  const auto uMetallicFactor =
+          glGetUniformLocation(glslProgram.glId(), "uMetallicFactor");
+  const auto uRougnessFactor  =
+      glGetUniformLocation(glslProgram.glId(), "uRougnessFactor");
+  const auto uMetallicRoughnessTexture  =
+          glGetUniformLocation(glslProgram.glId(), "uMetallicRoughnessTexture");
 
   tinygltf::Model model;
   if (!loadGltfFile(model)) {
@@ -118,6 +123,15 @@ int ViewerApplication::run()
                (float)pbrMetallicRoughness.baseColorFactor[3]);
           }
 
+          if (uMetallicFactor >= 0) {
+            glUniform1f(
+                uMetallicFactor, (float)pbrMetallicRoughness.metallicFactor);
+          }
+          if (uRougnessFactor >= 0) {
+            glUniform1f(
+                uRougnessFactor, (float)pbrMetallicRoughness.roughnessFactor);
+          }
+
           if (uBaseColorTexture >= 0) {
             auto textureObject = whiteTexture;
             if (pbrMetallicRoughness.baseColorTexture.index >= 0) {
@@ -130,18 +144,43 @@ int ViewerApplication::run()
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, textureObject);
             glUniform1i(uBaseColorTexture, 0);
+          }
+          if (uMetallicRoughnessTexture > 0) {
+            auto textureObject = 0u;
+            if (pbrMetallicRoughness.metallicRoughnessTexture.index >= 0) {
+              const auto &texture =
+                  model.textures[pbrMetallicRoughness.metallicRoughnessTexture
+                                     .index];
+              if (texture.source >= 0) {
+                textureObject = textureObjects[texture.source];
+              }
+            }
 
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, textureObject);
+            glUniform1i(uMetallicRoughnessTexture, 1);
           }
       }
       else{
         if (uBaseColorFactor >= 0) {
           glUniform4f(uBaseColorFactor, 1, 1, 1, 1);
         }
+        if (uMetallicFactor >= 0) {
+          glUniform1f(uMetallicFactor, 1.f);
+        }
+        if (uRougnessFactor >= 0) {
+          glUniform1f(uRougnessFactor, 1.f);
+        }
         if (uBaseColorTexture >= 0) {
           glActiveTexture(GL_TEXTURE0);
           glBindTexture(GL_TEXTURE_2D, whiteTexture);
           glUniform1i(uBaseColorTexture, 0);
         }
+        if (uMetallicRoughnessTexture > 0) {
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glUniform1i(uMetallicRoughnessTexture, 1);
+      }
     }
   };
   // Lambda function to draw the scene
