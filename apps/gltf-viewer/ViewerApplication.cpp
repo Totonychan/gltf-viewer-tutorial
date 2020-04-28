@@ -59,6 +59,11 @@ int ViewerApplication::run()
   const auto uEmissiveTexture  =
           glGetUniformLocation(glslProgram.glId(), "uEmissiveTexture");
 
+  const auto uNormalFactor  =
+          glGetUniformLocation(glslProgram.glId(), "uNormalFactor");
+  const auto uNormalTexture  =
+          glGetUniformLocation(glslProgram.glId(), "uNormalTexture");
+
   tinygltf::Model model;
   if (!loadGltfFile(model)) {
     return -1;
@@ -185,6 +190,25 @@ int ViewerApplication::run()
             glUniform1i(uEmissiveTexture, 2);
           }
 
+          if (uNormalFactor >= 0) {
+            glUniform1f(uNormalFactor, (float)(material.normalTexture.scale));
+          }
+
+          if (uNormalTexture > 0) {
+            auto textureObject = 0u;
+            if (material.normalTexture.index >= 0) {
+              const auto &texture =
+                  model.textures[material.normalTexture.index];
+              if (texture.source >= 0) {
+                textureObject = textureObjects[texture.source];
+              }
+            }
+            glActiveTexture(GL_TEXTURE3);
+            glBindTexture(GL_TEXTURE_2D, textureObject);
+            glUniform1i(uNormalTexture, 3);
+          }
+
+
       }
       else{
         if (uBaseColorFactor >= 0) {
@@ -192,6 +216,9 @@ int ViewerApplication::run()
         }
         if (uEmissiveFactor >= 0) {
           glUniform3f(uEmissiveFactor, 1, 1, 1);
+        }
+        if (uNormalFactor >= 0) {
+          glUniform1f(uNormalFactor, 1.f);
         }
         if (uMetallicFactor >= 0) {
           glUniform1f(uMetallicFactor, 1.f);
@@ -214,6 +241,12 @@ int ViewerApplication::run()
           glBindTexture(GL_TEXTURE_2D, 0);
           glUniform1i(uEmissiveTexture, 2);
         }
+        if (uNormalTexture > 0) {
+          glActiveTexture(GL_TEXTURE3);
+          glBindTexture(GL_TEXTURE_2D, 0);
+          glUniform1i(uNormalTexture, 3);
+        }
+
     }
   };
   // Lambda function to draw the scene
