@@ -44,6 +44,38 @@ vec4 SRGBtoLINEAR(vec4 srgbIn)
   return vec4(pow(srgbIn.xyz, vec3(GAMMA)), srgbIn.w);
 }
 
+
+
+mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
+{
+    // get edge vectors of the pixel triangle
+    vec3 dp1 = dFdx( p );
+    vec3 dp2 = dFdy( p );
+    vec2 duv1 = dFdx( uv );
+    vec2 duv2 = dFdy( uv );
+
+    // solve the linear system
+    vec3 dp2perp = cross( dp2, N );
+    vec3 dp1perp = cross( N, dp1 );
+    vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+    vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+
+    // construct a scale-invariant frame
+    float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
+    return mat3( T * invmax, B * invmax, N );
+}
+
+vec3 perturb_normal( vec3 N, vec3 V, vec2 texcoord )
+{
+    // assume N, the interpolated vertex normal and
+    // V, the view vector (vertex to eye)
+    vec3 map = texture(uNormalTexture, texcoord).rgb;
+    map = map * 255./127. - 128./127.;
+    mat3 TBN = cotangent_frame(N, -V, texcoord);
+    return normalize(TBN * map);
+}
+
+
 void main()
 {
   vec3 N = normalize(vViewSpaceNormal);
@@ -54,8 +86,8 @@ void main()
   vec4 emissiveFromTexture = SRGBtoLINEAR(texture(uEmissiveTexture, vTexCoords));
   vec3 emissive = vec3(uEmissiveFactor * emissiveFromTexture.rgb);
 
-  vec3 normal = texture(uNormalTexture, vTexCoords).rgb;
-  normal = normalize(normal)*uNormalFactor;
+  // NormalMap
+  vec3 PN = perturb_normal( N, V, vTexCoords );
 
     vec4 baseColorFromTexture = SRGBtoLINEAR(texture(uBaseColorTexture, vTexCoords));
     vec4 metallicRougnessFromTexture = texture(uMetallicRoughnessTexture, vTexCoords);
@@ -78,13 +110,14 @@ void main()
     vec3 F = F_0 + (vec3(1) - F_0) * shlickFactor;
 
     float sqrAlpha = alpha * alpha;
-    float NdotL = clamp(dot(N, L), 0, 1);
-    float NdotV = clamp(dot(N, V), 0, 1);
+
+    float NdotL = clamp(dot(PN, L), 0, 1);
+    float NdotV = clamp(dot(PN, V), 0, 1);
     float visDenominator = NdotL * sqrt(NdotV * NdotV * (1 - sqrAlpha) + sqrAlpha) +
       NdotV * sqrt(NdotL * NdotL * (1 - sqrAlpha) + sqrAlpha);
     float Vis = visDenominator > 0. ? 0.5 / visDenominator : 0.0;
 
-    float NdotH = clamp(dot(N, H), 0, 1);
+    float NdotH = clamp(dot(PN, H), 0, 1);
     float baseDenomD = (NdotH * NdotH * (sqrAlpha - 1) + 1);
     float D = M_1_PI * sqrAlpha / (baseDenomD * baseDenomD);
 
@@ -95,5 +128,4 @@ void main()
 
 
     fColor = LINEARtoSRGB((f_diffuse + f_specular) * uLightIntensity * NdotL + emissive);
-    fColor = normal;
 }
