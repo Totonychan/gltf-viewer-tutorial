@@ -65,16 +65,13 @@ mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
     return mat3( T * invmax, B * invmax, N );
 }
 
-vec3 perturb_normal( vec3 N, vec3 V, vec2 texcoord )
+vec3 perturb_normal( vec3 N, vec3 V)
 {
-    // assume N, the interpolated vertex normal and
-    // V, the view vector (vertex to eye)
-    vec3 map = texture(uNormalTexture, texcoord).rgb;
+    vec3 map = texture(uNormalTexture, vTexCoords).rgb;
     map = map * 255./127. - 128./127.;
-    mat3 TBN = cotangent_frame(N, -V, texcoord);
+    mat3 TBN = cotangent_frame(N, -V, vTexCoords);
     return normalize(TBN * map);
 }
-
 
 void main()
 {
@@ -87,7 +84,7 @@ void main()
   vec3 emissive = vec3(uEmissiveFactor * emissiveFromTexture.rgb);
 
   // NormalMap
-  vec3 PN = perturb_normal( N, V, vTexCoords );
+  vec3 PN = perturb_normal( N, V);
 
     vec4 baseColorFromTexture = SRGBtoLINEAR(texture(uBaseColorTexture, vTexCoords));
     vec4 metallicRougnessFromTexture = texture(uMetallicRoughnessTexture, vTexCoords);
